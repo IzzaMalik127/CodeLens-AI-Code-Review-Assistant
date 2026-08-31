@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+
 import "bootstrap/dist/css/bootstrap.min.css";
+
 import "./App.css";
 
 type Finding = {
@@ -25,35 +27,48 @@ type ReviewHistoryItem = {
   createdAt: string;
 };
 
+const HISTORY_KEY = "codelens-review-history";
+
+function loadSavedHistory(): ReviewHistoryItem[] {
+  try {
+    const savedHistory = localStorage.getItem(HISTORY_KEY);
+
+    if (!savedHistory) {
+      return [];
+    }
+
+    const parsedHistory = JSON.parse(savedHistory);
+
+    if (!Array.isArray(parsedHistory)) {
+      return [];
+    }
+
+    return parsedHistory;
+  } catch (error) {
+    console.error("Could not load review history:", error);
+    return [];
+  }
+}
+
 function App() {
   const [language, setLanguage] = useState("JavaScript");
   const [code, setCode] = useState("");
   const [isReviewing, setIsReviewing] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [history, setHistory] = useState<ReviewHistoryItem[]>([]);
+
+  // Load saved history immediately when the app initializes
+  const [history, setHistory] = useState<ReviewHistoryItem[]>(
+    loadSavedHistory
+  );
+
   const [showHistory, setShowHistory] = useState(false);
-
-  // Load review history when the app starts
-  useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem(
-        "codelens-review-history"
-      );
-
-      if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
-      }
-    } catch (error) {
-      console.error("Could not load review history:", error);
-    }
-  }, []);
 
   // Save history whenever it changes
   useEffect(() => {
     try {
       localStorage.setItem(
-        "codelens-review-history",
+        HISTORY_KEY,
         JSON.stringify(history)
       );
     } catch (error) {
@@ -88,7 +103,18 @@ function App() {
         }
       );
 
-      const data = await response.json();
+      let data: {
+        detail?: string;
+        review?: Review;
+      };
+
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(
+          "The backend returned an invalid response."
+        );
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -107,7 +133,9 @@ function App() {
 
       // Save successful review to history
       const historyItem: ReviewHistoryItem = {
-        id: Date.now().toString(),
+        id: `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 9)}`,
         code,
         language,
         review: data.review,
@@ -121,7 +149,14 @@ function App() {
     } catch (error) {
       console.error("Review error:", error);
 
-      if (error instanceof Error) {
+      if (
+        error instanceof TypeError &&
+        error.message === "Failed to fetch"
+      ) {
+        setErrorMessage(
+          "Unable to connect to CodeLens AI. Please make sure the backend server is running and try again."
+        );
+      } else if (error instanceof Error) {
         setErrorMessage(error.message);
       } else {
         setErrorMessage(
@@ -205,10 +240,17 @@ function App() {
   const getHealthLabel = () => {
     if (!review) return "—";
 
-    if (review.health_score >= 90) return "Excellent";
-    if (review.health_score >= 75) return "Good";
-    if (review.health_score >= 60)
+    if (review.health_score >= 90) {
+      return "Excellent";
+    }
+
+    if (review.health_score >= 75) {
+      return "Good";
+    }
+
+    if (review.health_score >= 60) {
       return "Needs Attention";
+    }
 
     return "Critical";
   };
@@ -241,7 +283,7 @@ function App() {
     return findings.map((item, index) => (
       <div
         className={`finding-card severity-${item.severity}`}
-        key={index}
+        key={`${item.severity}-${index}-${item.description}`}
       >
         <span className="severity-badge">
           {item.severity}
@@ -254,20 +296,14 @@ function App() {
 
   return (
     <div className="app">
-
       {/* NAVBAR */}
       <nav className="navbar">
-
         <div className="logo">
-          <span className="logo-mark">
-            ◈
-          </span>
-
+          <span className="logo-mark">◈</span>
           <span>CodeLens</span>
         </div>
 
         <div className="nav-actions">
-
           <span className="nav-item">
             Docs
           </span>
@@ -279,23 +315,20 @@ function App() {
             }
           >
             History
+
             {history.length > 0 && (
               <span className="history-count">
                 {history.length}
               </span>
             )}
           </button>
-
         </div>
-
       </nav>
 
       {/* HISTORY PANEL */}
       {showHistory && (
         <aside className="history-panel">
-
           <div className="history-header">
-
             <div>
               <span className="section-label">
                 CODELENS
@@ -309,32 +342,26 @@ function App() {
               onClick={() =>
                 setShowHistory(false)
               }
+              aria-label="Close history"
             >
               ×
             </button>
-
           </div>
 
           {history.length === 0 ? (
-
             <div className="history-empty">
               <div>◷</div>
 
-              <p>
-                No reviews yet.
-              </p>
+              <p>No reviews yet.</p>
 
               <span>
                 Your completed reviews will
                 appear here.
               </span>
             </div>
-
           ) : (
-
             <>
               <div className="history-toolbar">
-
                 <span>
                   {history.length}{" "}
                   {history.length === 1
@@ -348,27 +375,21 @@ function App() {
                 >
                   Clear all
                 </button>
-
               </div>
 
               <div className="history-list">
-
                 {history.map((item) => (
-
                   <div
                     className="history-item"
                     key={item.id}
                   >
-
                     <button
                       className="history-item-main"
                       onClick={() =>
                         loadHistoryItem(item)
                       }
                     >
-
                       <div className="history-item-top">
-
                         <span className="history-language">
                           {item.language}
                         </span>
@@ -379,23 +400,25 @@ function App() {
                             90
                               ? "score-excellent"
                               : item.review
-                                  .health_score >= 75
+                                  .health_score >=
+                                75
                               ? "score-good"
                               : item.review
-                                  .health_score >= 60
+                                  .health_score >=
+                                60
                               ? "score-warning"
                               : "score-critical"
                           }`}
                         >
                           {item.review.health_score}
                         </span>
-
                       </div>
 
                       <p>
                         {item.code
                           .split("\n")[0]
                           .slice(0, 45)}
+
                         {item.code.length > 45
                           ? "..."
                           : ""}
@@ -406,7 +429,6 @@ function App() {
                           item.createdAt
                         ).toLocaleString()}
                       </span>
-
                     </button>
 
                     <button
@@ -417,26 +439,21 @@ function App() {
                         )
                       }
                       title="Delete review"
+                      aria-label="Delete review"
                     >
                       ×
                     </button>
-
                   </div>
-
                 ))}
-
               </div>
             </>
           )}
-
         </aside>
       )}
 
       <main className="dashboard">
-
         {/* HERO */}
         <section className="hero">
-
           <p className="eyebrow">
             AI-POWERED CODE ANALYSIS
           </p>
@@ -450,17 +467,13 @@ function App() {
             performance problems before they
             reach production.
           </p>
-
         </section>
 
         {/* MAIN DASHBOARD */}
         <section className="top-dashboard">
-
           {/* CODE EDITOR */}
           <div className="panel code-panel">
-
             <div className="panel-header">
-
               <div>
                 <span className="panel-title">
                   YOUR CODE
@@ -485,7 +498,6 @@ function App() {
                 <option>C++</option>
                 <option>C#</option>
               </select>
-
             </div>
 
             <textarea
@@ -498,13 +510,11 @@ function App() {
             />
 
             <div className="code-footer">
-
               <span>
                 {code.length} characters
               </span>
 
               <div className="code-actions">
-
                 {code && !isReviewing && (
                   <button
                     className="clear-button"
@@ -530,50 +540,36 @@ function App() {
                     </>
                   )}
                 </button>
-
               </div>
-
             </div>
 
             {errorMessage && (
               <div className="error-message">
-
                 <span>⚠</span>
 
-                <p>
-                  {errorMessage}
-                </p>
-
+                <p>{errorMessage}</p>
               </div>
             )}
-
           </div>
 
           {/* HEALTH */}
           <div className="dashboard-card health-card">
-
             <div className="card-heading">
-
               <div>
                 <span className="section-label">
                   CODE HEALTH
                 </span>
 
-                <h3>
-                  Overall score
-                </h3>
+                <h3>Overall score</h3>
               </div>
 
               <span className="card-icon">
                 ✦
               </span>
-
             </div>
 
             {!review ? (
-
               <div className="waiting-state">
-
                 {isReviewing ? (
                   <>
                     <div className="analyzing-icon">
@@ -597,13 +593,9 @@ function App() {
                     </p>
                   </>
                 )}
-
               </div>
-
             ) : (
-
               <div className="health-content">
-
                 <div
                   className="health-circle"
                   style={
@@ -612,23 +604,16 @@ function App() {
                     } as React.CSSProperties
                   }
                 >
-
                   <div className="health-circle-inner">
-
                     <strong>
                       {review.health_score}
                     </strong>
 
-                    <span>
-                      /100
-                    </span>
-
+                    <span>/100</span>
                   </div>
-
                 </div>
 
                 <div className="health-status">
-
                   <span className="health-label">
                     {getHealthLabel()}
                   </span>
@@ -637,19 +622,14 @@ function App() {
                     Based on the AI code
                     analysis.
                   </p>
-
                 </div>
-
               </div>
             )}
-
           </div>
 
           {/* STATISTICS */}
           <div className="dashboard-card statistics-card">
-
             <div className="card-heading">
-
               <div>
                 <span className="section-label">
                   ISSUES
@@ -659,17 +639,16 @@ function App() {
                   Severity overview
                 </h3>
               </div>
-
             </div>
 
             <div className="statistics-grid">
-
               <div className="stat-box total">
                 <strong>
                   {review
                     ? getTotalIssues()
                     : "—"}
                 </strong>
+
                 <span>Total</span>
               </div>
 
@@ -679,6 +658,7 @@ function App() {
                     ? getSeverityCount("high")
                     : "—"}
                 </strong>
+
                 <span>High</span>
               </div>
 
@@ -688,6 +668,7 @@ function App() {
                     ? getSeverityCount("medium")
                     : "—"}
                 </strong>
+
                 <span>Medium</span>
               </div>
 
@@ -697,18 +678,15 @@ function App() {
                     ? getSeverityCount("low")
                     : "—"}
                 </strong>
+
                 <span>Low</span>
               </div>
-
             </div>
-
           </div>
 
           {/* GRAPH */}
           <div className="dashboard-card graph-card">
-
             <div className="card-heading">
-
               <div>
                 <span className="section-label">
                   ISSUE BREAKDOWN
@@ -718,11 +696,9 @@ function App() {
                   Analysis by category
                 </h3>
               </div>
-
             </div>
 
             <div className="category-chart">
-
               {[
                 ["Bugs", review?.bugs.length ?? 0],
                 [
@@ -738,26 +714,17 @@ function App() {
                   review?.quality.length ?? 0,
                 ],
               ].map(([label, count]) => (
-
                 <div
                   className="chart-row"
                   key={label}
                 >
-
                   <div className="chart-top">
+                    <span>{label}</span>
 
-                    <span>
-                      {label}
-                    </span>
-
-                    <strong>
-                      {count}
-                    </strong>
-
+                    <strong>{count}</strong>
                   </div>
 
                   <div className="bar-track">
-
                     <div
                       className="bar-fill"
                       style={{
@@ -768,26 +735,17 @@ function App() {
                           : "0%",
                       }}
                     />
-
                   </div>
-
                 </div>
-
               ))}
-
             </div>
-
           </div>
-
         </section>
 
         {/* REVIEW CONTENT */}
         <section className="review-dashboard">
-
           {!review ? (
-
             <div className="empty-review">
-
               <div className="ai-icon">
                 ✦
               </div>
@@ -811,16 +769,11 @@ function App() {
                   <span></span>
                 </div>
               )}
-
             </div>
-
           ) : (
-
             <>
-
               {/* OVERALL */}
               <div className="overall-card">
-
                 <div>
                   <span className="section-label">
                     OVERALL ASSESSMENT
@@ -831,19 +784,13 @@ function App() {
                   </h2>
                 </div>
 
-                <p>
-                  {review.overall}
-                </p>
-
+                <p>{review.overall}</p>
               </div>
 
               {/* FINDINGS */}
               <div className="findings-grid">
-
                 <div className="finding-section">
-
                   <div className="finding-heading">
-
                     <span className="finding-symbol">
                       🐛
                     </span>
@@ -857,20 +804,16 @@ function App() {
                         Bugs & Errors
                       </h3>
                     </div>
-
                   </div>
 
                   {renderFindings(
                     review.bugs,
                     "No bugs found."
                   )}
-
                 </div>
 
                 <div className="finding-section">
-
                   <div className="finding-heading">
-
                     <span className="finding-symbol">
                       🔒
                     </span>
@@ -880,24 +823,18 @@ function App() {
                         CATEGORY
                       </span>
 
-                      <h3>
-                        Security
-                      </h3>
+                      <h3>Security</h3>
                     </div>
-
                   </div>
 
                   {renderFindings(
                     review.security,
                     "No security issues found."
                   )}
-
                 </div>
 
                 <div className="finding-section">
-
                   <div className="finding-heading">
-
                     <span className="finding-symbol">
                       ⚡
                     </span>
@@ -907,24 +844,18 @@ function App() {
                         CATEGORY
                       </span>
 
-                      <h3>
-                        Performance
-                      </h3>
+                      <h3>Performance</h3>
                     </div>
-
                   </div>
 
                   {renderFindings(
                     review.performance,
                     "No performance issues found."
                   )}
-
                 </div>
 
                 <div className="finding-section">
-
                   <div className="finding-heading">
-
                     <span className="finding-symbol">
                       ✨
                     </span>
@@ -938,23 +869,18 @@ function App() {
                         Code Quality
                       </h3>
                     </div>
-
                   </div>
 
                   {renderFindings(
                     review.quality,
                     "No quality issues found."
                   )}
-
                 </div>
-
               </div>
 
               {/* SUGGESTIONS */}
               <div className="suggestions-card">
-
                 <div className="finding-heading">
-
                   <span className="finding-symbol">
                     💡
                   </span>
@@ -964,61 +890,41 @@ function App() {
                       RECOMMENDATIONS
                     </span>
 
-                    <h3>
-                      Suggestions
-                    </h3>
+                    <h3>Suggestions</h3>
                   </div>
-
                 </div>
 
                 <div className="suggestions-list">
-
                   {review.suggestions.length === 0 ? (
-
                     <div className="no-issues">
                       No additional suggestions.
                     </div>
-
                   ) : (
-
                     review.suggestions.map(
                       (item, index) => (
-
                         <div
                           className="suggestion-item"
-                          key={index}
+                          key={`${index}-${item}`}
                         >
-
                           <span>
                             {String(
                               index + 1
                             ).padStart(2, "0")}
                           </span>
 
-                          <p>
-                            {item}
-                          </p>
-
+                          <p>{item}</p>
                         </div>
-
                       )
                     )
-
                   )}
-
                 </div>
-
               </div>
-
             </>
           )}
-
         </section>
-
       </main>
     </div>
   );
 }
 
 export default App;
-
