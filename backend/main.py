@@ -51,8 +51,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local development
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+
+        # Production frontend
+        "https://codelens-ai-code-review.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -87,6 +91,7 @@ def build_prompt(language: str, code: str) -> str:
 Review this {language} code as a professional software engineer.
 
 Analyze:
+
 - bugs and runtime errors
 - security problems
 - performance problems
@@ -94,13 +99,17 @@ Analyze:
 - practical improvements
 
 Important:
+
 Analyze ONLY as {language}.
+
 Do not assume another language.
 
 Return ONLY valid JSON.
+
 No Markdown.
 No code fences.
 No explanations outside JSON.
+
 Keep descriptions short and beginner-friendly.
 
 Use exactly this structure:
@@ -140,6 +149,7 @@ Use exactly this structure:
 Rules:
 
 health_score:
+
 100 = excellent
 90-99 = very good
 75-89 = good
@@ -148,14 +158,17 @@ health_score:
 0-39 = critical problems
 
 severity must be exactly:
+
 "high", "medium", or "low"
 
 If a category has no issues, return an empty array.
 
 Do not invent issues.
+
 Suggestions should be practical and relevant.
 
 CODE:
+
 {code}
 """
 
@@ -165,7 +178,6 @@ CODE:
 # =========================================================
 
 def clean_response(response_text: str) -> str:
-
     response_text = response_text.strip()
 
     if response_text.startswith("```"):
@@ -211,6 +223,7 @@ def normalize_review(review_data: dict) -> dict:
                 int(review_data["health_score"])
             )
         )
+
     except (ValueError, TypeError):
         review_data["health_score"] = 75
 
@@ -247,7 +260,10 @@ async def review_code(request: CodeRequest):
     if len(code) > 20000:
         raise HTTPException(
             status_code=413,
-            detail="Code is too large. Please submit less than 20,000 characters."
+            detail=(
+                "Code is too large. "
+                "Please submit less than 20,000 characters."
+            )
         )
 
     # -----------------------------------------------------
@@ -276,6 +292,7 @@ async def review_code(request: CodeRequest):
 
             # Run the synchronous Gemini SDK call
             # without blocking FastAPI's event loop.
+
             interaction = await asyncio.to_thread(
                 client.interactions.create,
                 model="gemini-3.6-flash",
@@ -284,7 +301,9 @@ async def review_code(request: CodeRequest):
 
             response_text = interaction.output_text.strip()
 
-            print("Gemini response received successfully.")
+            print(
+                "Gemini response received successfully."
+            )
 
             break
 
@@ -350,8 +369,10 @@ async def review_code(request: CodeRequest):
                 "performance": [],
                 "quality": [],
                 "suggestions": [
-                    "Try reviewing the code again "
-                    "for a structured analysis."
+                    (
+                        "Try reviewing the code again "
+                        "for a structured analysis."
+                    )
                 ],
             },
         }
@@ -372,3 +393,4 @@ async def review_code(request: CodeRequest):
         "message": "AI code review completed!",
         "review": review_data,
     }
+
