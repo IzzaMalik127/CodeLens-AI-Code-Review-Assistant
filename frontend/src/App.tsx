@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import "bootstrap/dist/css/bootstrap.min.css";
-
 import "./App.css";
 
 type Finding = {
@@ -28,6 +27,9 @@ type ReviewHistoryItem = {
 };
 
 const HISTORY_KEY = "codelens-review-history";
+
+// YOUR DEPLOYED BACKEND
+const API_URL = "https://codelens-ai-code-review-backend.vercel.app";
 
 function loadSavedHistory(): ReviewHistoryItem[] {
   try {
@@ -56,21 +58,13 @@ function App() {
   const [isReviewing, setIsReviewing] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-
-  // Load saved history immediately when the app initializes
-  const [history, setHistory] = useState<ReviewHistoryItem[]>(
-    loadSavedHistory
-  );
-
+  const [history, setHistory] =
+    useState<ReviewHistoryItem[]>(loadSavedHistory);
   const [showHistory, setShowHistory] = useState(false);
 
-  // Save history whenever it changes
   useEffect(() => {
     try {
-      localStorage.setItem(
-        HISTORY_KEY,
-        JSON.stringify(history)
-      );
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch (error) {
       console.error("Could not save review history:", error);
     }
@@ -89,49 +83,38 @@ function App() {
     setErrorMessage("");
 
     try {
-      const response = await fetch(
-        "http://localhost:8000/review",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            code,
-            language,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          code,
+          language,
+        }),
+      });
 
-      let data: {
-        detail?: string;
-        review?: Review;
-      };
-
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error(
-          "The backend returned an invalid response."
-        );
-      }
+      const data = await response.json();
 
       if (!response.ok) {
+        console.error("Backend error:", data);
+
         throw new Error(
-          data.detail ||
-            "The AI review could not be completed."
+          data?.detail
+            ? typeof data.detail === "string"
+              ? data.detail
+              : JSON.stringify(data.detail)
+            : "The backend could not complete the review."
         );
       }
 
       if (!data.review) {
-        throw new Error(
-          "The backend returned an empty review."
-        );
+        throw new Error("The backend returned an empty review.");
       }
 
       setReview(data.review);
 
-      // Save successful review to history
       const historyItem: ReviewHistoryItem = {
         id: `${Date.now()}-${Math.random()
           .toString(36)
@@ -154,7 +137,7 @@ function App() {
         error.message === "Failed to fetch"
       ) {
         setErrorMessage(
-          "Unable to connect to CodeLens AI. Please make sure the backend server is running and try again."
+          "Unable to connect to CodeLens AI. Please make sure the backend is deployed and try again."
         );
       } else if (error instanceof Error) {
         setErrorMessage(error.message);
@@ -174,9 +157,7 @@ function App() {
     setErrorMessage("");
   };
 
-  const loadHistoryItem = (
-    item: ReviewHistoryItem
-  ) => {
+  const loadHistoryItem = (item: ReviewHistoryItem) => {
     setCode(item.code);
     setLanguage(item.language);
     setReview(item.review);
@@ -191,9 +172,7 @@ function App() {
 
   const deleteHistoryItem = (id: string) => {
     setHistory((previousHistory) =>
-      previousHistory.filter(
-        (item) => item.id !== id
-      )
+      previousHistory.filter((item) => item.id !== id)
     );
   };
 
@@ -262,10 +241,7 @@ function App() {
       return "0%";
     }
 
-    return `${Math.max(
-      (count / total) * 100,
-      8
-    )}%`;
+    return `${Math.max((count / total) * 100, 8)}%`;
   };
 
   const renderFindings = (
@@ -296,7 +272,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* NAVBAR */}
       <nav className="navbar">
         <div className="logo">
           <span className="logo-mark">◈</span>
@@ -325,7 +300,6 @@ function App() {
         </div>
       </nav>
 
-      {/* HISTORY PANEL */}
       {showHistory && (
         <aside className="history-panel">
           <div className="history-header">
@@ -396,16 +370,11 @@ function App() {
 
                         <span
                           className={`history-score ${
-                            item.review.health_score >=
-                            90
+                            item.review.health_score >= 90
                               ? "score-excellent"
-                              : item.review
-                                  .health_score >=
-                                75
+                              : item.review.health_score >= 75
                               ? "score-good"
-                              : item.review
-                                  .health_score >=
-                                60
+                              : item.review.health_score >= 60
                               ? "score-warning"
                               : "score-critical"
                           }`}
@@ -434,9 +403,7 @@ function App() {
                     <button
                       className="history-delete"
                       onClick={() =>
-                        deleteHistoryItem(
-                          item.id
-                        )
+                        deleteHistoryItem(item.id)
                       }
                       title="Delete review"
                       aria-label="Delete review"
@@ -452,7 +419,6 @@ function App() {
       )}
 
       <main className="dashboard">
-        {/* HERO */}
         <section className="hero">
           <p className="eyebrow">
             AI-POWERED CODE ANALYSIS
@@ -469,9 +435,7 @@ function App() {
           </p>
         </section>
 
-        {/* MAIN DASHBOARD */}
         <section className="top-dashboard">
-          {/* CODE EDITOR */}
           <div className="panel code-panel">
             <div className="panel-header">
               <div>
@@ -546,13 +510,11 @@ function App() {
             {errorMessage && (
               <div className="error-message">
                 <span>⚠</span>
-
                 <p>{errorMessage}</p>
               </div>
             )}
           </div>
 
-          {/* HEALTH */}
           <div className="dashboard-card health-card">
             <div className="card-heading">
               <div>
@@ -627,7 +589,6 @@ function App() {
             )}
           </div>
 
-          {/* STATISTICS */}
           <div className="dashboard-card statistics-card">
             <div className="card-heading">
               <div>
@@ -684,7 +645,6 @@ function App() {
             </div>
           </div>
 
-          {/* GRAPH */}
           <div className="dashboard-card graph-card">
             <div className="card-heading">
               <div>
@@ -720,7 +680,6 @@ function App() {
                 >
                   <div className="chart-top">
                     <span>{label}</span>
-
                     <strong>{count}</strong>
                   </div>
 
@@ -729,9 +688,7 @@ function App() {
                       className="bar-fill"
                       style={{
                         width: review
-                          ? getBarWidth(
-                              Number(count)
-                            )
+                          ? getBarWidth(Number(count))
                           : "0%",
                       }}
                     />
@@ -742,7 +699,6 @@ function App() {
           </div>
         </section>
 
-        {/* REVIEW CONTENT */}
         <section className="review-dashboard">
           {!review ? (
             <div className="empty-review">
@@ -772,7 +728,6 @@ function App() {
             </div>
           ) : (
             <>
-              {/* OVERALL */}
               <div className="overall-card">
                 <div>
                   <span className="section-label">
@@ -787,7 +742,6 @@ function App() {
                 <p>{review.overall}</p>
               </div>
 
-              {/* FINDINGS */}
               <div className="findings-grid">
                 <div className="finding-section">
                   <div className="finding-heading">
@@ -878,7 +832,6 @@ function App() {
                 </div>
               </div>
 
-              {/* SUGGESTIONS */}
               <div className="suggestions-card">
                 <div className="finding-heading">
                   <span className="finding-symbol">
