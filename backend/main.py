@@ -54,6 +54,7 @@ app.add_middleware(
         # Local development
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://codelens-ai-ten.vercel.app",
 
         # Production frontend
         "https://codelens-ai-code-review.vercel.app",
