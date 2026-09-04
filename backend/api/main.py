@@ -1,8 +1,3 @@
-bash
-
-cat /home/claude/main_complete.py
-Output
-
 import os
 import json
 import asyncio
@@ -398,5 +393,4 @@ async def review_code(request: CodeRequest):
     return {
         "message": "AI code review completed!",
         "review": review_data,
-    }
-
+    }      
