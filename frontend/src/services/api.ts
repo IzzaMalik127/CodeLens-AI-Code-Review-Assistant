@@ -1,4 +1,4 @@
-const API_URL = "https://codelens-ai-code-review-backend.vercel.app";
+const API_URL = "http://127.0.0.1:8000";
 
 export async function reviewCode(code: string, language: string) {
   const response = await fetch(`${API_URL}/review`, {
@@ -21,4 +21,3 @@ export async function reviewCode(code: string, language: string) {
 
   return response.json();
 }
-

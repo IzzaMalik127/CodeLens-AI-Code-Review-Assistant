@@ -29,7 +29,7 @@ type ReviewHistoryItem = {
 const HISTORY_KEY = "codelens-review-history";
 
 // YOUR DEPLOYED BACKEND
-const API_URL = "https://codelens-ai-code-review-backend.vercel.app";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function loadSavedHistory(): ReviewHistoryItem[] {
   try {
