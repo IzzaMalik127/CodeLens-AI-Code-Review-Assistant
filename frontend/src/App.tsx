@@ -31,6 +31,54 @@ const HISTORY_KEY = "codelens-review-history";
 // YOUR DEPLOYED BACKEND
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
+const DEMO_CODE = `def calculate_average(numbers):
+    total = 0
+    for i in range(len(numbers)):
+        total += numbers[i]
+    average = total / len(numbers)
+    print("Average:", average)
+
+scores = [85, 90, 78, 92]
+calculate_average(scores)`;
+
+const DEMO_REVIEW: Review = {
+  overall:
+    "The function computes the average correctly for normal input, but it crashes on an empty list and prints the result instead of returning it, which limits reuse and testing.",
+  health_score: 68,
+  bugs: [
+    {
+      description:
+        "Dividing by len(numbers) raises a ZeroDivisionError when the list is empty.",
+      severity: "high",
+    },
+  ],
+  security: [],
+  performance: [
+    {
+      description:
+        "The index-based loop is slower and harder to read than summing the list directly.",
+      severity: "low",
+    },
+  ],
+  quality: [
+    {
+      description:
+        "The function prints the result instead of returning it, so other code cannot reuse the value.",
+      severity: "medium",
+    },
+    {
+      description:
+        "There is no docstring or type hint describing the expected input.",
+      severity: "low",
+    },
+  ],
+  suggestions: [
+    "Return the average instead of printing it.",
+    "Handle an empty list before dividing.",
+    "Use sum(numbers) / len(numbers) for a simpler implementation.",
+  ],
+};
+
 function loadSavedHistory(): ReviewHistoryItem[] {
   try {
     const savedHistory = localStorage.getItem(HISTORY_KEY);
@@ -140,7 +188,9 @@ function App() {
           "Unable to connect to CodeLens AI. Please make sure the backend is deployed and try again."
         );
       } else if (error instanceof Error) {
-        setErrorMessage(error.message);
+        setErrorMessage(
+          "The free AI model is busy. Try the demo, or retry in a minute."
+        );
       } else {
         setErrorMessage(
           "Something went wrong while reviewing your code."
@@ -154,6 +204,13 @@ function App() {
   const handleClear = () => {
     setCode("");
     setReview(null);
+    setErrorMessage("");
+  };
+
+  const handleDemo = () => {
+    setLanguage("Python");
+    setCode(DEMO_CODE);
+    setReview(DEMO_REVIEW);
     setErrorMessage("");
   };
 
@@ -489,6 +546,14 @@ function App() {
                 )}
 
                 <button
+                  className="clear-button"
+                  onClick={handleDemo}
+                  disabled={isReviewing}
+                >
+                  Try demo
+                </button>
+
+                <button
                   onClick={handleReview}
                   disabled={isReviewing}
                 >
@@ -506,6 +571,22 @@ function App() {
                 </button>
               </div>
             </div>
+
+                       {isReviewing && (
+              <div
+                style={{
+                  padding: "0 28px 20px",
+                  fontSize: "11px",
+                  fontWeight: 400,
+                  lineHeight: 1.5,
+                  textAlign: "left",
+                  opacity: 0.5,
+                }}
+              >
+                Analyzing your code. This can take up to a minute on the
+                free-tier model.
+              </div>
+            )}
 
             {errorMessage && (
               <div className="error-message">

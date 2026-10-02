@@ -1,13 +1,12 @@
 import os
 import json
-import asyncio
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from google import genai
+from openai import OpenAI
 
 
 # =========================================================
@@ -16,20 +15,38 @@ from google import genai
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-if not GEMINI_API_KEY:
+if not OPENROUTER_API_KEY:
     raise ValueError(
-        "GEMINI_API_KEY is not set in the .env file"
+        "OPENROUTER_API_KEY is not set in the .env file"
     )
 
 
 # =========================================================
-# GEMINI CLIENT
+# AI SETTINGS
 # =========================================================
 
-client = genai.Client(
-    api_key=GEMINI_API_KEY
+# Free model router. You can replace this with a specific
+# model ID from openrouter.ai/models later.
+MODEL_NAME = "openrouter/free"
+
+# Maximum length of the AI answer (shorter = faster)
+MAX_OUTPUT_TOKENS = 1500
+
+# How many times to try before giving up
+MAX_ATTEMPTS = 2
+
+
+# =========================================================
+# OPENROUTER CLIENT
+# =========================================================
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+    timeout=25.0,      # give up on one attempt after 25 seconds
+    max_retries=0,     # no hidden retries that add extra waiting
 )
 
 
@@ -39,7 +56,7 @@ client = genai.Client(
 
 app = FastAPI(
     title="CodeLens AI Code Review Assistant",
-    description="AI-powered code analysis using Gemini",
+    description="AI-powered code analysis using OpenRouter",
     version="1.0.0",
 )
 
@@ -54,9 +71,9 @@ app.add_middleware(
         # Local development
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://codelens-ai-ten.vercel.app",
 
         # Production frontend
+        "https://codelens-ai-ten.vercel.app",
         "https://codelens-ai-code-review.vercel.app",
     ],
     allow_credentials=True,
@@ -108,10 +125,16 @@ Do not assume another language.
 Return ONLY valid JSON.
 
 No Markdown.
+
 No code fences.
+
 No explanations outside JSON.
 
 Keep descriptions short and beginner-friendly.
+
+Return at most 3 items per category.
+
+Keep each description under 25 words.
 
 Use exactly this structure:
 
@@ -152,10 +175,15 @@ Rules:
 health_score:
 
 100 = excellent
+
 90-99 = very good
+
 75-89 = good
+
 60-74 = needs attention
+
 40-59 = significant problems
+
 0-39 = critical problems
 
 severity must be exactly:
@@ -171,6 +199,7 @@ Suggestions should be practical and relevant.
 CODE:
 
 {code}
+
 """
 
 
@@ -201,7 +230,6 @@ def clean_response(response_text: str) -> str:
 # =========================================================
 
 def normalize_review(review_data: dict) -> dict:
-
     review_data.setdefault(
         "overall",
         "No overall assessment provided."
@@ -224,7 +252,6 @@ def normalize_review(review_data: dict) -> dict:
                 int(review_data["health_score"])
             )
         )
-
     except (ValueError, TypeError):
         review_data["health_score"] = 75
 
@@ -277,61 +304,58 @@ async def review_code(request: CodeRequest):
     )
 
     # -----------------------------------------------------
-    # GEMINI REQUEST
+    # OPENROUTER REQUEST (with time limit and 2 attempts)
     # -----------------------------------------------------
 
-    max_attempts = 2
+    response_text = None
 
-    for attempt in range(max_attempts):
-
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-
             print(
-                f"Starting AI review "
-                f"(attempt {attempt + 1}/{max_attempts})..."
+                f"Starting OpenRouter AI review "
+                f"(attempt {attempt} of {MAX_ATTEMPTS})..."
             )
 
-            # Run the synchronous Gemini SDK call
-            # without blocking FastAPI's event loop.
-
-            interaction = await asyncio.to_thread(
-                client.interactions.create,
-                model="gemini-3.6-flash",
-                input=prompt,
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                max_tokens=MAX_OUTPUT_TOKENS,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
             )
 
-            response_text = interaction.output_text.strip()
+            content = response.choices[0].message.content
+
+            if not content:
+                raise ValueError(
+                    "OpenRouter returned an empty response."
+                )
+
+            response_text = content.strip()
 
             print(
-                "Gemini response received successfully."
+                "OpenRouter response received successfully."
             )
 
             break
 
         except Exception as error:
-
             print(
-                "Gemini API error:",
+                f"OpenRouter API error (attempt {attempt}):",
                 error
             )
 
-            if attempt < max_attempts - 1:
-
-                print(
-                    "Temporary failure. Retrying..."
-                )
-
-                await asyncio.sleep(1)
-
-            else:
-
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "Gemini AI is temporarily unavailable. "
-                        "Please try again."
-                    )
-                )
+    if response_text is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "OpenRouter AI is temporarily unavailable. "
+                "Please try again."
+            )
+        )
 
     # =====================================================
     # CLEAN RESPONSE
@@ -346,7 +370,6 @@ async def review_code(request: CodeRequest):
     # =====================================================
 
     try:
-
         review_data = json.loads(
             response_text
         )
@@ -354,7 +377,7 @@ async def review_code(request: CodeRequest):
     except json.JSONDecodeError:
 
         print(
-            "Gemini returned invalid JSON."
+            "OpenRouter returned invalid JSON."
         )
 
         return {
